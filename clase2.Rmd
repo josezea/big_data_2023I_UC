@@ -1,0 +1,309 @@
+---
+title: "Clase2"
+author: "José Fernando Zea"
+date: "2023-02-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Aprender a instalar y cargar las paquetes
+
+```{r}
+library(dplyr)
+library(TeachingSampling)
+library(readr) # vroom, data.table (fread)
+
+#library(readxl)
+#ibrary(writexl)
+```
+
+
+```{r}
+2 + 3
+```
+
+En R los dataframes son la estructurara usual para llevar a cabo análisis datos:
+
+
+```{r}
+data(Lucy)
+summary(Lucy)
+```
+
+Indentifiquemos los duplicados de la tabla Lucy
+
+```{r}
+table(duplicated(Lucy$ID))
+```
+
+
+```{r}
+
+```
+
+
+Exportar archivo a csv:
+
+```{r}
+write_csv(Lucy, "Lucy.csv")
+```
+
+
+Podemos leerlo de vuelta sin especificar  un esquema o los tipos de variables de cada una de las columnas
+
+```{r}
+lucy2 <- read_csv("Lucy.csv")
+```
+
+
+Se puede exportar especificando el tipo de variable:
+
+
+```{r}
+df <- read_csv("Lucy.csv", col_types = "ccccninc")
+str(df) # Especifica los tipos de cada variable
+```
+
+pipeline (magritr)
+
+
+# Renombrar y seleccionar variables
+
+Desde la exportación:
+
+```{r}
+minidf <- read_csv("Lucy.csv", n_max = 5)
+df2 <- read_csv("Lucy.csv", col_types = "ccccninc",
+                col_select  = c("ID", "Level", "Income"))
+```
+
+Desde un conjunto de datos:
+
+```{r}
+df3 <- select(df, ID, Level, Income)
+
+var_sel <- c("ID", "Level", "Income")
+df3 <- select(df, var_sel)
+
+# Ctr shift M:  %>%:  pipe, magrit, flujo, tubería, pipeline
+df3 <- df %>% select(ID, Level, Income)
+df3 <- df %>% select(var_sel)
+
+```
+
+Como funciona el operador %>% (pipe):
+f(x, y)  <=>  x %>% f(y)
+
+```{r}
+df4 <- rename(df3, tamano = Level, ingreso = Income)
+df4 <- df %>% select(ID, Level, Income) %>%
+       rename(tamano = Level, ingreso = Income)
+```
+
+
+
+# Ordenar
+
+Ordenar la base de datos reducida y con nombres en español por
+ingreso de manera creciente.
+
+```{r}
+df5 <- df %>% select(ID, Level, Income) %>%
+       rename(tamano = Level, ingreso = Income) %>% 
+       arrange(ingreso)
+
+df5 <- df4 %>% arrange(ingreso)
+```
+
+Si quiero organizar de manera decreciente:
+
+```{r}
+df6 <- df %>% select(ID, Level, Income) %>%
+       rename(tamano = Level, ingreso = Income) %>% 
+       arrange(desc(ingreso))
+```
+
+
+# Filtros
+
+A la tabla anterior, seleccionomele sólo las empresas pequeñas:
+
+
+```{r}
+df7 <- df %>% select(ID, Level, Income) %>%
+       rename(tamano = Level, ingreso = Income) %>% 
+       arrange(desc(ingreso)) %>% 
+       filter(tamano == "Small") %>% 
+       select(-tamano)
+```
+
+# Resumenes
+
+```{r}
+df8 <- df %>% select(ID, Level, Income) %>%
+       rename(tamano = Level, ingreso = Income) %>% 
+       arrange(desc(ingreso)) %>% 
+       filter(tamano == "Small") %>% 
+       select(-tamano) %>% 
+  summarise(min_ingreso = min(ingreso),
+            p25_ingreso = quantile(ingreso, 0.25),
+            mediana = median(ingreso),
+            prom_ingreso = mean(ingreso),
+            p75_ingreso = quantile(ingreso, 0.75),
+            max_ingreso = max(ingreso),
+            cv = sd(ingreso) / mean(ingreso) * 100)
+```
+
+
+# Agregaciones
+
+```{r}
+df9 <- df %>% select(ID, Level, Income) %>%
+       rename(tamano = Level, ingreso = Income) %>% 
+         group_by(tamano) %>% 
+          summarise(min_ingreso = min(ingreso),
+            p25_ingreso = quantile(ingreso, 0.25),
+            mediana = median(ingreso),
+            prom_ingreso = mean(ingreso),
+            p75_ingreso = quantile(ingreso, 0.75),
+            max_ingreso = max(ingreso),
+            cv = sd(ingreso) / mean(ingreso) * 100)
+
+```
+
+
+# Transformaciones de variables
+
+Calcular la participación porcentual de cada empresa en el ingreso
+
+Ingreso / Total Ingreso
+
+```{r}
+total_ingreso <- sum(df$Income)
+df <- df %>% mutate(participacion = Income / total_ingreso * 100)
+```
+
+Crear una columna con la paticipación porcentual de cada empresa
+dentro de su respectivo Nivel (Pequeño, Mediano o Grande).
+
+```{r}
+df <- df %>% group_by(Level) %>%
+  mutate(total_ingreso_nivel = sum(Income),
+         participacion_nivel = Income / total_ingreso_nivel * 100)
+```
+
+
+Si se desea converti una variable de numerica a character:
+
+```{r}
+consulta1 <- df %>% select(ID, Income) %>% 
+  mutate(IncomeTexto = as.character(Income) )
+
+consulta2 <-  consulta1 %>% select(ID, IncomeTexto) %>% 
+  mutate(Income2 = as.numeric(IncomeTexto))
+```
+
+
+# Recodiciaciones
+
+Convertir una variable texto en otra texto reducida (colapsar categorías):
+
+```{r}
+df <- df %>% mutate(tamanored = ifelse(Level %in% c("Medium", "Small"), "PYME", 
+                                       "Grande"))
+
+```
+
+
+Convertir en 10 grupos por los deciles (min, P10, P20, ... P50, P60, ..P90, max) el
+ingreso:
+[0, 1)
+[1, 139)
+[139, 261)
+
+[618, 763)
+[763, 2510]
+
+```{r}
+deciles <- quantile(df$Income, probs = seq(0, 1, .1))
+df <- df %>% mutate(ingreso_grupo = cut(Income, breaks = deciles,
+                                        include.lowest = T, 
+                                        right = FALSE,
+                                        labels = 1:10
+                                          ))
+```
+
+Verbos comunes: select, arrange, order_by, rename, filter, group_by
+summarise, mutate
+
+Otros verbos interesantes
+
+```{r}
+df %>% slice(2:7) # Seleccionar filas
+```
+
+```{r}
+df[2:7,]
+```
+
+```{r}
+table(df$Level)
+```
+El pull sustituye al signo pesos:
+
+```{r}
+df %>% pull(Level) %>% table()
+```
+
+
+```{r}
+df %>% group_by(Level) %>% count()
+```
+
+
+```{r}
+df %>% group_by(Zone, Level) %>% count()
+
+```
+
+```{r}
+df %>% group_by(Level) %>% summarise(cuenta = n())
+```
+
+```{r}
+df %>% group_by(Level) %>% count(name = "cuenta") 
+
+```
+
+```{r}
+df %>% group_by(Level) %>% count(name = "cuenta")  %>% 
+  ungroup() %>% mutate(total = sum(cuenta),
+                       porcentaje = round(100 * cuenta / total, 2))
+```
+
+```{r}
+df %>% group_by(Level) %>% summarise(cuenta = n())  %>% 
+  ungroup() %>% mutate(total = sum(cuenta),
+                       porcentaje = round(100 * cuenta / total, 2)) 
+
+```
+
+
+
+Tabla 1: Pymes con ingreso y impuestos, id
+Tabla 2: todos con el número de empleados el ID
+
+Ejericio: Pegarle a las Pymes el número de empleados
+
+```{r}
+tabla1 <- df %>% ungroup() %>% filter(Level %in% c("Small", "Medium")) %>%
+  select(ID2 = ID, Income, Taxes) 
+tabla2 <- df %>% ungroup() %>%  select(ID, Employees)
+
+# right_join, inner_join, full_join
+tabla <- left_join(tabla1, tabla2, by = c("ID2" = "ID"))
+```
+
