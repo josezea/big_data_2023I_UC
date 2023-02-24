@@ -1,0 +1,153 @@
+---
+title: "Untitled"
+author: "José Fernando Zea"
+date: "2023-02-23"
+output: html_document
+---
+
+
+# dolyr y algo de arrow
+
+```{r}
+library(arrow)
+library(dplyr)
+library(tictoc)
+library(readxl)
+```
+
+```{r}
+# Colocar carpeta de trabajo (set working directory)
+setwd("11_Bogota")
+dir() # Mostrar los archivos y carpetas dentro de la carpeta 11_Bogota
+```
+
+
+```{r}
+# Colocar carpeta de trabajo (set working directory)
+df_bogota_lazy <- open_dataset("11_Bogota")
+#df_bogota_lazy %>% count() %>% collect()
+```
+
+
+Acá hay una receta, no ha pasado nada
+```{r}
+df_bogota_lazy %>% group_by(P_SEXO) %>% summarise(cuenta = n())
+# df_bogota_lazy %>% group_by(P_SEXO) %>% count()
+```
+
+
+```{r}
+df_bogota_lazy %>% group_by(P_SEXO) %>% summarise(cuenta = n()) %>% collect()
+```
+
+```{r}
+consulta1 <- df_bogota_lazy %>% group_by(P_SEXO) %>% summarise(cuenta = n()) %>% collect()
+
+```
+
+
+```{r}
+consulta2 <- df_bogota_lazy %>% mutate(sexo = ifelse(P_SEXO == 1, "M", "F")) 
+```
+
+
+El Collect aloja el resultado en el disco duro, el resultado debe ser lo suficientemente pequeño (que quepa en el disco duro)
+
+
+
+```{r}
+consulta2 <- df_bogota_lazy %>% group_by(P_SEXO, PA1_GRP_ETNIC) %>% count() %>% collect() %>% 
+  arrange(desc(n))
+
+```
+
+
+Ejercicio:
+
+Analizar problema de salud de la población afro en Bogota (separado por hombre y mujeres)
+
+
+```{r}
+df_bogota_lazy %>% group_by(P_ENFERMO) %>% count() %>% collect()
+```
+
+```{r, warning=FALSE, message=FALSE}
+tic()
+consulta_salud <- df_bogota_lazy %>% filter(PA1_GRP_ETNIC == 5) %>% 
+  mutate(indica_salud = ifelse(P_ENFERMO == 1, 1, 0)) %>% 
+  group_by(P_SEXO) %>% 
+  summarise(porc_problemaSalud = 100 * mean(indica_salud, na.rm = T)) %>% collect()
+toc()
+```
+
+
+# Población 2018
+
+
+```{r}
+censo_personas <- open_dataset("parquet/personas")
+
+```
+
+
+```{r}
+censo_personas %>% count() %>% collect()
+```
+
+
+```{r}
+tic()
+consulta3 <- censo_personas %>% group_by(U_DPTO, U_MPIO) %>% summarise(N_per = n()) %>% 
+  collect()
+toc()
+```
+
+
+Necesito saber las columnas, un análisis previos:
+
+```{r}
+head(df_bogota_lazy) %>% collect()
+```
+
+
+Calcular por municipio el conteo del
+estado civil de las mujeres entre 25 y 49 años
+y luego con este resultado ver el municipio con más mujeres en el país
+
+
+```{r}
+temp <- censo_personas %>% filter(P_EDADR %in% 5:10) %>% 
+  group_by(U_DPTO,  U_MPIO, P_SEXO, P_EST_CIVIL) %>% 
+  summarise(cuenta = n()) %>% collect() %>% ungroup()
+
+temp2 <- temp %>% group_by(U_DPTO,  U_MPIO, P_SEXO) %>% 
+  mutate(total_GeneroMpio = sum(cuenta),
+         prop_estCivXmpioSexo = cuenta / total_GeneroMpio) %>% 
+  filter(P_EST_CIVIL == 7 & P_SEXO == 2) %>% 
+  arrange(desc(prop_estCivXmpioSexo))
+```
+
+Integrar a la tabla llamada divipola
+
+```{r}
+divipola <- read_excel("DIVIPOLA.xlsx")
+
+temp2$`codigo_municipio` <- paste0(temp2$U_DPTO, temp2$U_MPIO)
+temp2 <- temp2 %>% left_join( 
+        divipola %>% select(`codigo_municipio`, nombre_departamento,
+                           nombre_municipio), by = "codigo_municipio")
+
+```
+
+
+
+```{r}
+censo_personas %>% filter(U_DPTO == "25" & U_MPIO == "513") %>% 
+  count() %>% collect()
+```
+
+```{r}
+pacho <- censo_personas %>% filter(U_DPTO == "25" & U_MPIO == "513") %>% 
+ collect()
+```
+
