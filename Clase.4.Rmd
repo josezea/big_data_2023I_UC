@@ -1,0 +1,181 @@
+---
+title: "Untitled"
+author: "José Fernando Zea"
+date: "2023-03-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(arrow)
+library(dplyr)
+library(tictoc)
+```
+
+```{r}
+dir()
+```
+
+```{r}
+df_viviendas_lz <- open_dataset("parquet/viviendas")
+df_hogares_lz <- open_dataset("parquet/hogares")
+df_personas_lz <- open_dataset("parquet/personas")
+```
+
+```{r}
+df_viviendas_lz %>% count() %>% collect()
+```
+
+```{r}
+df_personas_lz %>% count() %>% collect()
+```
+
+
+Calcular el número de personas por sexo estrato socieconómico y total
+
+```{r}
+tic()
+consulta1 <- df_viviendas_lz %>% select(COD_ENCUESTAS, VA1_ESTRATO) %>% 
+  right_join(df_personas_lz %>% select(COD_ENCUESTAS, P_SEXO)) %>% 
+  group_by(VA1_ESTRATO, P_SEXO) %>% summarise(N = n()) %>% collect()
+toc()
+```
+
+```{r}
+sum(consulta1$N)
+```
+
+
+```{r}
+consulta1 <- consulta1 %>% arrange(VA1_ESTRATO, P_SEXO)
+``` 
+
+```{r}
+# De forma
+library(reshape2)
+consulta1_pivoteada <- dcast(data = consulta1, formula = VA1_ESTRATO ~ P_SEXO, 
+                             value.var = "N")
+consulta1_pivoteada$Total <- rowSums(consulta1_pivoteada)
+```
+
+
+Ejercicio 2: 
+Calcular la población de todos los mnunicipios en el área urbana y rural de las personas que están entre 15 y 59 años (población económicamente activa). Estén ordenados del más poblaco al menos poblado
+
+
+```{r}
+tic()
+consulta2 <- df_viviendas_lz %>% select(COD_ENCUESTAS, UA_CLASE) %>% 
+  right_join(
+    df_personas_lz %>% filter(P_EDADR >= 4 & P_EDADR <= 12) %>% 
+               select(COD_ENCUESTAS, U_DPTO, U_MPIO) 
+    ) %>% 
+  group_by(U_DPTO, U_MPIO, UA_CLASE) %>%
+  summarise(cuenta = n()) %>% 
+  collect()
+toc()
+```
+
+```{r}
+tic()
+a <- df_viviendas_lz %>% select(COD_ENCUESTAS, UA_CLASE)
+b =   df_personas_lz %>% filter(P_EDADR >= 4 & P_EDADR <= 12) %>% 
+               select(COD_ENCUESTAS, U_DPTO, U_MPIO) 
+C <- right_join(a, b)
+consulta2b <- C %>% 
+  group_by(U_DPTO, U_MPIO, UA_CLASE) %>%
+  summarise(cuenta = n()) %>% 
+  collect()
+toc()
+```
+
+```{r}
+consulta2_pivoteada <- dcast(data = consulta2, 
+                             formula = U_DPTO + U_MPIO  ~ UA_CLASE, 
+                             value.var = "cuenta")
+consulta2_pivoteada$Total <- rowSums(consulta2_pivoteada[,3:5], na.rm = TRUE)
+consulta2_pivoteada <- arrange(consulta2_pivoteada, desc(Total))
+consulta2_pivoteada$`1` <- ifelse(is.na(consulta2_pivoteada$`1`), 0,    
+                                        consulta2_pivoteada$`1`)
+consulta2_pivoteada$`2` <- ifelse(is.na(consulta2_pivoteada$`2`), 0,    
+                                        consulta2_pivoteada$`2`)
+consulta2_pivoteada$`3` <- ifelse(is.na(consulta2_pivoteada$`3`), 0,    
+                                        consulta2_pivoteada$`3`)
+```
+
+
+Calcular la tasa de hacinamiento por municipio, ordenar del municipio más 
+hacinado al menos hacinado. Mencionar los 10 municipios más hacinados y los 10 menos hacinados
+
+$$
+Hacin = \frac{Personas}{Cuartos}
+$$
+
+```{r}
+library(vroom) # leer rapido los csv
+library(fs) # archivos sistemas
+library(purrr) # Ciclos, for
+
+# https://rpubs.com/FelipeMonroy/591813
+write_chunk_data <- function(data_path, output_dir, chunk_size = 1000000) {
+  #If the output_dir do not exist, it is created
+  if (!fs::dir_exists(output_dir)) fs::dir_create(output_dir)
+  #It gets the name of the file
+  data_name <- fs::path_ext_remove(fs::path_file(data_path))
+  #It sets the chunk_num to 0
+  chunk_num <- 0
+  #Read the file using vroom
+  data_chunk <- vroom::vroom(data_path, delim = "\t", 
+                             col_types =  paste(rep("c", 73), collapse = ""))
+  #It gets the variable names
+  data_names <- names(data_chunk)
+  #It gets the number of rows
+  rows<-nrow(data_chunk)
+  
+  #The following loop creates a parquet file for every [chunk_size] rows
+  repeat{
+    #It checks if we are over the max rows
+    if(rows>(chunk_num+1)*chunk_size){
+      arrow::write_parquet(data_chunk[(chunk_num*chunk_size+1):((chunk_num+1)*chunk_size),], 
+                           fs::path(output_dir, glue::glue("{data_name}-{chunk_num}.parquet")))
+    }
+    else{
+      arrow::write_parquet(data_chunk[(chunk_num*chunk_size+1):rows,], 
+                           fs::path(output_dir, glue::glue("{data_name}-{chunk_num}.parquet"))) 
+      break
+    }
+    chunk_num <- chunk_num + 1
+  }
+  
+  
+  
+  #This is to recover some memory and space in the disk
+  rm(data_chunk)
+  tmp_file <- tempdir()
+  files <- list.files(tmp_file, full.names = T, pattern = "^vroom")
+  file.remove(files)
+}
+
+```
+
+
+```{r}
+data(iris)
+write.csv(iris, "iris.csv", row.names = F)
+```
+
+```{r}
+write_chunk_data(data_path = "iris.csv",
+                 output_dir = "iris", chunk_size = 50)
+```
+
+```{r}
+iris_lz <- open_dataset("iris")
+iris_lz %>% count() %>% collect()
+```
+
