@@ -1,0 +1,190 @@
+---
+title: "Untitled"
+author: "José Fernando Zea"
+date: "2023-03-09"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r}
+library(arrow) # Librería en C++ trabaja paralelo para procesar datos
+library(duckdb) # Paquete para manejar base de datos duckdb
+library(dbplyr) # Consultas en dplyr para un motor de bases de datos
+library(dplyr) # Procesar datos (small data)
+library(DBI) # Hacer conexiones a bases de datos (Duckdb, Oracle, 
+#Mysql, MariaDB, Posgresql, Slqserver, DataWarehouse: aws redshift, google bigquery, Azure synapse)
+library(tictoc) # Tomar tiempos
+```
+
+
+Map + Reduce: transformar y agregar
+
+
+# Usar sqlite
+
+```{r}
+library(sqldf)
+data(iris)
+names(iris) <- c("Sepal_Length", "Sepal_Width", "Petal_Length", "Petal_Width", 
+"Species")
+
+
+consulta1 <- sqldf("
+SELECT Species, avg(Petal_Length) as prom_longpetalo
+      FROM iris
+      GROUP BY Species
+      ")
+consulta1
+```
+
+
+
+
+
+# Csv a base de datos duckdb
+
+
+Ingestar datos a duckdb (csv a duckdb), Ingestamos el archivo de viviendas de Armenia:
+
+```{r}
+# Lectura a archivo csv a una base duckdb 
+# Crear una conexión a una base duckdb
+con <- DBI::dbConnect(drv = duckdb::duckdb(), 
+                      dbdir = "basedatos")
+duckdb_read_csv(con,
+               name = "personas_armenia_duckdb", 
+               files = "datos_armenia.csv")
+```
+
+
+Podemos ingestar un archivo que esté en un dataframe:
+
+```{r}
+# Ingestamos un dataframe
+dbWriteTable(con, "iris_duckdb", iris)
+```
+
+
+```{r}
+# Listamos las tablas
+duckdb::dbListTables(con)
+```
+
+Una forma de traerse todos los datos si el conjunto de datos cabe en memoria RAM:
+
+```{r}
+armenia_lz <- tbl(con, "personas_armenia_duckdb") # Tabla lazy
+armenia <- armenia_lz %>% collect()
+```
+
+Si la base de datos ocupa un espacio considerable de memoria RAM:
+
+Lo ideal es extraer una parte o realizar una consulta, por ejemplo seleccionemos las mujeres de Armenia:
+
+```{r}
+string_sql1 <- "
+SELECT * 
+FROM personas_armenia_duckdb 
+WHERE P_SEXO = 2
+"
+  
+armenia_mujeres <- dbGetQuery(con, string_sql1)  
+# Convierte la consulta a un dataframe
+
+```
+
+
+
+
+
+Otra opción, es usar dplyr, sacar el conteo por edad:
+
+```{r}
+armenia_lz <- tbl(con, "personas_armenia_duckdb") # Tabla lazy
+consulta2 <- armenia_lz %>% filter(P_SEXO == 2) %>% 
+  group_by(P_EDADR) %>% 
+  summarise(contar = n())
+  
+```
+
+
+Entender la consulta sql que se está usando
+```{r}
+consulta2 %>% show_query()
+```
+
+
+```{r}
+armenia_lz <- tbl(con, "personas_armenia_duckdb") # Tabla lazy
+consulta2 <- armenia_lz %>% filter(P_SEXO == 2) %>% 
+  group_by(P_EDADR) %>% 
+  summarise(contar = n()) %>% collect()
+```
+
+
+
+
+```{r}
+armenia_lz %>% filter(P_SEXO == 2) %>% 
+  group_by(P_EDADR) %>% 
+  summarise(contar = n()) %>% show_query()
+```
+
+
+
+Ejercicio
+
+Realizar el conteo de mujeres mayores de 18 años y menores de 60 años 
+por estado civil 
+
+
+
+
+# Ingesta de un archivo parquet
+
+```{r}
+df_personas_lz <- open_dataset("censo_unificado/parquet/personas")
+#con2 <- DBI::dbConnect(duckdb::duckdb(), dbdir = "duckdb2")
+df_personas_duck <- to_duckdb(df_personas_lz, con, 
+                              "personasColombia_duck")
+```
+
+
+```{r}
+tic()
+df_personas_duck %>% count() %>% collect()
+toc()
+```
+
+
+Realizar el ranking con duckdb
+
+```{r}
+tic()
+consulta_secuencia_gitanos <- df_personas_duck %>% 
+  filter(PA1_GRP_ETNIC == 2) %>% 
+  mutate(secuencia = row_number()) %>% collect()
+toc()
+```
+
+
+```{r}
+# No se puede hacer operaciones como las windows functions en paralelo en arro o spark por ejemplo
+# consulta_secuencia_gitanosB <- df_personas_lz %>% 
+#   filter(PA1_GRP_ETNIC == 2) %>% 
+#   mutate(secuencia = row_number()) %>% collect()
+
+```
+
+Más ejercicios:
+
+https://github.com/josezea/bigdata_arrow/blob/main/clase3_grupo2.Rmd
+
