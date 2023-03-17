@@ -1,0 +1,266 @@
+---
+title: "Conexión a base de datos"
+author: "José Fernando Zea"
+date: '2022-07-02'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Bases de datos desde R
+
+```{r}
+# https://community.rstudio.com/t/dbplyr-summarize-without-a-group-by/116466/6
+library(DBI) # Conexiones Oracle, MariaDB / Mysql, Bigquery, Snowflake
+library(RMariaDB) # Mysql, MariaDb
+# library(RMySQL)
+library(dbplyr) # Traduce dplyr sql
+library(dplyr) 
+library(rstudioapi) # Una clave 
+```
+
+```{r}
+DBI::dbDisconnect(con)
+rm(list = ls())
+```
+
+
+
+```{r, eval = FALSE}
+con <- DBI::dbConnect(odbc::odbc(),
+                      Driver   = "[your driver's name]",
+                      Server   = "[your server's path]",
+                      UID      = rstudioapi::askForPassword("Database user"),
+                      PWD      = rstudioapi::askForPassword("Database password"),
+                      Port     = 3306)
+```
+
+
+```{r}
+# Connect to the MySQL database: con
+# DBI compliance    
+con <- dbConnect(drv = RMariaDB::MariaDB(), # RMySQL::MySQL(), 
+                     dbname = "classicmodels", 
+                     host = "localhost", # 192.1.34.2 ficticia
+                     port = 3306,
+                     user = "root", 
+                     password =  rstudioapi::askForPassword("Database password")
+                     ) 
+# clave
+```
+
+
+```{r}
+# # Get table names
+tables <- dbListTables(con)
+# Display structure of tables
+str(tables)
+```
+
+
+```{r}
+customers_db <- tbl(con, "customers")
+customers_db
+```
+
+Contar el número de registros:
+
+```{r}
+customers_db %>% summarise(cuenta = n()) %>% collect()
+```
+
+```{r}
+customers_db %>% summarise(cuenta = n()) %>% show_query()
+```
+
+
+Como hacer consultas sql de forma lazy:
+
+```{r}
+sql_query <- dbplyr::sql("SELECT country, AVG(creditLimit) as prom_credito
+FROM customers 
+GROUP BY country
+")
+consulta1_lazy <- dplyr::tbl(con, sql_query)
+consulta1_lazy
+```
+
+Note que en vez de colocar la tabla entera (customers) coloco una cadena sql.
+
+
+Continuo trabajando de forma lazy con dpbplyr hasta que le de collect
+```{r}
+consulta1_lazy %>%
+  mutate(porcentaje = 100 * prom_credito  / sum(prom_credito))  %>%
+arrange(desc(porcentaje)) %>% collect()
+```
+
+```{r}
+consulta1_lazy %>%
+  mutate(porcentaje = 100 * prom_credito  / sum(prom_credito))  %>%
+arrange(desc(porcentaje)) %>% show_query()
+```
+
+
+Si quiero mandar la consulta a la memoria RAM:
+
+```{r}
+consulta <- consulta1_lazy %>% collect()
+```
+
+
+Si quiero mandar la consulta al disco duro:
+
+```{r}
+library(writexl)
+writexl::write_xlsx(consulta, "consulta.xslx")
+```
+
+
+Puedo crear una tabla en la base de datos:
+
+```{r}
+sql2 <- "
+SELECT country, AVG(creditLimit) as prom_credito
+FROM customers 
+GROUP BY country
+"
+consulta2 <- dbGetQuery(con, sql2)
+dbWriteTable(con, "consultatemp2", consulta2)
+```
+
+```{r}
+dbListTables(con)
+```
+
+
+
+Contemos cuantas empresas hay por país y calculemos el promedio del cupo
+máximo de la tarjeta de crédito (creditLimit)
+
+
+
+```{r}
+customers_db <- tbl(con, "customers")
+comsulta1 <- customers_db %>% group_by(country) %>%
+  summarise(cuenta = n(), prom_cupo = mean(creditLimit)) %>% collect()
+comsulta1
+```
+
+ Miremos el código en SQL:
+
+```{r}
+customers_db %>% group_by(country) %>%
+  summarise(cuenta = n(), prom_cupo = mean(creditLimit)) %>% show_query()
+```
+
+
+
+
+Seleccionar el ID del cliente, el nombre del cliente, el país, y el cupo, y ordenar por país (alfabeticamente) y cupo de mayor a menor
+
+```{r}
+comsulta1 <- customers_db %>% select(customerNumber, customerName, country, creditLimit) %>% arrange(country, desc(creditLimit))%>% collect()
+flextable::flextable(comsulta1)
+```
+
+
+
+```{r}
+cadenasql <- "
+  SELECT count(*) as N
+  FROM customers 
+  "
+consultaA <- dbGetQuery(con, cadenasql)
+```
+
+
+```{r}
+sql <- "
+SELECT `country`, COUNT(*) AS `cuenta`, AVG(`creditLimit`) AS `prom_cupo`
+FROM `customers`
+GROUP BY `country`
+"
+dbGetQuery(con, sql)
+```
+
+```{r}
+comsulta1 <- customers_db %>% select(customerNumber, customerName, country, creditLimit)%>% arrange(country, desc(creditLimit))%>% show_query()
+```
+
+
+# Ejercicio
+
+Con las tablas customers y payments traer las ventas (amount) totales por país dplyr y sql.
+
+```{r}
+#Ejercicio 1
+payments_db <- tbl(con, "payments")
+customers_db%>%head()%>%collect()
+payments_db%>%head()%>%collect()
+consulta_1 <-left_join(select(customers_db, customerNumber, country),
+                       select(payments_db, customerNumber,amount),by = c("customerNumber"))%>%
+  group_by(country)%>%
+  summarise(total_ventas=sum(amount,na.rm = TRUE))%>%collect()
+print(consulta_1)
+```
+
+
+
+```{r}
+sql_query <- dbplyr::sql("SELECT country, SUM(amount) as Ventas
+FROM customers
+JOIN payments
+ON customers.customerNumber = payments.customerNumber
+GROUP BY country
+ORDER BY Ventas DESC
+")
+ejercicio1_lazy <- dplyr::tbl(con, sql_query)
+ejercicio1_lazy
+```
+
+
+
+Ejercicio del taller 1 con Mysql (dos), Armenia del censo y repliquen ejercicios del taller 1.
+
+
+# Escribir en la base de datos
+
+```{r}
+data(iris)
+summary(iris)
+```
+
+
+```{r}
+data(iris)
+dbWriteTable(con, "iris", iris)
+```
+
+
+Vamos agregar una columna de 1's a la tabla de clientes y escribirla en SQL SERVER
+
+```{r}
+customer <- customers_db %>% mutate(unos = 1) %>% collect()
+dbWriteTable(con, "customer", customer)
+  
+```
+
+
+
+Ejecutar en SQL calcular el promedio del cupo por país (sentencia en sql)
+
+
+```{r}
+sql <- "
+SELECT COUNTRY, AVG(creditlimit) as prom_cupo
+FROM customers
+GROUP BY COUNTRY
+"
+consulta2 <- dbGetQuery(con, sql) %>% collect()
+consulta2
+```
