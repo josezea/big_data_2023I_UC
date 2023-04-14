@@ -1,0 +1,33 @@
+
+data(iris)
+names(iris) <- gsub("\\.", "_", names(iris))
+write.csv(iris, "iris.csv", row.names = FALSE)
+
+
+[
+  {
+    "name": "Sepal_Length",
+    "type": "FLOAT",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "Sepal_Width",
+    "type": "FLOAT",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "Petal_Length",
+    "type": "FLOAT",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "Petal_Width",
+    "type": "FLOAT",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "Species",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  }
+]
