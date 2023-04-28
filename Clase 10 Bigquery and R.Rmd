@@ -1,0 +1,73 @@
+---
+title: "Google Cloud"
+author: "Nubia Fernanda Sánchez Bello"
+date: "2023-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+library(dplyr)
+library(DBI)
+library(bigrquery)
+library(dbplyr)
+library(bit64)
+#p_load(dplyr, DBI, bigrquery, dbplyr, remotes, bit64, flextable)
+
+```
+
+```{r}
+
+```
+
+Para este paso mi markdown y el json de la llave de Google Cloud deberían estar en la misma carpeta
+astral-karma-383701.bigdata_uc.iris
+ 
+```{r}
+bigrquery::bq_auth(email = "nube.nubiasanchez@gmail.com", "astral-karma-383701-b53f696b02be.json")
+con <- DBI::dbConnect(
+    bigquery(),
+    project = "astral-karma-383701",
+    dataset = "bigdata_uc",
+    billing = "astral-karma-383701",
+    bigint = "integer64",
+    use_legacy_sql = FALSE,
+     )
+```
+```{r}
+bigrquery::list_tables(project = "astral-karma-383701", dataset = "bigdata_uc")
+```
+
+```{r}
+iris_lazy <- tbl(con, "iris") #conexión, tabla
+iris <- iris_lazy %>% collect()
+```
+```{r}
+string_consulta <- "
+SELECT Petal_Width, Petal_Length
+FROM iris
+WHERE Species = 'setosa' and Petal_Width > 0.3
+"
+
+consulta1_lazy <- tbl(con, sql(string_consulta)) 
+consulta1 <- consulta1_lazy %>% collect()
+```
+```{r}
+
+consulta1b <- iris_lazy %>% filter(Species == "setosa" &  Petal_Width > 0.3) %>% select(Petal_Width, Petal_Length) %>% 
+        collect()
+
+consulta1b
+```
+
+```{r}
+
+iris_lazy %>% filter(Species == "setosa" &  Petal_Width > 0.3) %>% select(Petal_Width, Petal_Length) %>% 
+        show_query()
+
+```
+
