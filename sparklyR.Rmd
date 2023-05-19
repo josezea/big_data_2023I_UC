@@ -1,0 +1,59 @@
+
+---
+title: "sparklyR"
+output:
+  html_document:
+    toc: true
+---
+
+
+```{r}
+library(dplyr)
+library(sparklyr)
+```
+
+
+```{r}
+sc <- spark_connect(method = "databricks")
+
+```
+
+
+```{r}
+df <- spark_read_csv(sc, name = "df", path = "/FileStore/tables/Log_Reg_dataset.csv", header = TRUE, infer_schema = TRUE)
+
+# Print the number of rows and columns
+print(nrow(df))
+print(ncol(df))
+
+# Disconnect from Spark when you're done
+#spark_disconnect(sc)
+```
+
+
+```{r}
+class(df)
+```
+
+
+```{r}
+df %>% count() %>% collect()
+```
+
+
+```{r}
+head(df)
+```
+
+
+```{r}
+consulta <- df %>% group_by(Country) %>% summarise(total_paginasvistas = sum(Web_pages_viewed )) %>%  collect()
+consulta %>% head()
+```
+
+
+```{r}
+# Tarea hacer la regresión logistica en sparklyr
+
+```
+
