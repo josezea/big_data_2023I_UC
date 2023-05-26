@@ -1,0 +1,165 @@
+---
+title: "Untitled"
+author: "José Fernando Zea"
+date: "2023-04-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+GET: permite extrer datos del sistema. Por ejemplo todos los datos en circulación en este moment
+
+POST: permite añadir datos al sistema. 
+
+PUT: permite actualizar datos del sistema
+DELETE: permite eliminar datos del sistema, por ejemplo eliminar un avíon del sistema.
+
+csv: información estática
+Scrapping: no toda la información está a la mano en el front-end
+Librerías: algunos servicios como hubspot (CRM), Socrata (para acceder a repositorios de datos abiertos) tienen librerias para acceder a datos.
+
+APIS: Las Apis permite consultar muchas fuentes de información en tiempo real. Para poder acceder a toda la información se requiere ciertos conocimientos de programación (ciclos for por ejemplo).
+
+
+Librerías necesarias para acceder a un API:
+
+
+
+* httr
+*jsonlite: los datos usualmente son retornados como json.
+
+
+Las APIS están omnipresentes (RapidApi, AnyApi, Opta, datos de fútbol).
+
+
+
+Una Api muy interesante: 
+https://opensky-network.org/
+
+Más documentación
+https://openskynetwork.github.io/opensky-api/rest.html
+
+
+
+Podemos ver esta dirección en el navegador,ir al menu Data y Live Api
+https://opensky-network.org/api/states/all
+
+Puedo leer esta información: 
+
+https://opensky-network.org/api
+
+```{r}
+library(httr) # python request
+library(jsonlite) # python json
+library(dplyr)
+```
+
+
+```{r}
+url <- "https://opensky-network.org/api/states/all"
+datos <- GET(url)
+datos
+```
+
+AHora extraigo los datos:
+
+```{r}
+datos <- fromJSON(content(datos, type = "text"))
+```
+
+Esto genera una lista:
+
+```{r}
+class(datos)
+```
+
+Navegación de aviones:
+
+```{r}
+lubridate::as_datetime(datos$time)
+```
+
+Información de los aviones que se encuentran en este momento volando:
+
+```{r}
+datos <- datos$states %>% as.data.frame()
+# datos <- as.data.frame(datos$states)
+```
+
+Esta página cuenta la documentación:
+
+https://openskynetwork.github.io/opensky-api/rest.html
+
+Instalamos como complemento un selectorGadget:
+
+```{r}
+# id se comentan con # y . se utilizan para clases
+library(dplyr)
+library(rvest) # beautifulSopup python
+url <- "https://openskynetwork.github.io/opensky-api/rest.html"
+tablas <- read_html(url) %>% html_nodes("#all-state-vectors") %>% 
+  html_nodes("#response") %>% html_nodes(".docutils") %>% html_table()
+tabla_nombres <- tablas[[2]] 
+nombres <- tabla_nombres$Property
+```
+
+
+```{r}
+names(datos) <- nombres[-18]
+```
+
+Los datos quedaron establecidos.
+
+```{r}
+datos
+```
+
+
+
+# Ejemplo 2
+
+
+```{r}
+library(httr)
+library(jsonlite)
+# https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?outFields=Postal&SingleLine='Carrera%209A%2062%2049,%20Bogota'&f=json
+  
+#address <- "Carrera 54 138 81, Bogota"
+GetPostalCode <- function(address) {
+#  direccion <- iconv(address, from="UTF-8",to="ASCII//TRANSLIT")
+  direccion <- gsub("#", "", address)
+  direccion <- gsub("-", "", direccion)
+  
+  # Separar los espacios
+  direccion_estructurada <- gsub(" ", "%20", direccion)
+  
+  url <- paste0("https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?outFields=Postal&SingleLine='",
+                direccion_estructurada, "'&f=json")
+  
+  
+  response <- GET(url)
+  json <- content(response, "text")
+  result <- fromJSON(json)
+  
+  if(length(result$candidates) == 0){
+    salida <- data.frame(address = NA_character_, location = NA_real_, score = NA_real_, Postal = NA_real_,
+                         extent.xmin = NA_real_, extent.ymin = NA_real_, extent.xmax =  NA_real_, extent.ymax = NA_real_)
+    
+      } else {
+    
+    salida <- result$candidates[which.max(result$candidates$score),]
+    
+     }
+  
+  return(salida)
+}
+
+
+GetPostalCode("Carrera 54 138 81, Bogota")
+GetPostalCode("Calle 25 32A 41, Bogota")
+GetPostalCode("Diagonal 25G # 95a - 55 Bogota")
+GetPostalCode("Carrera 94 75C - 58 Bogota")
+```
+
